@@ -1,9 +1,9 @@
 streamlit
 pandas
-numpy>=1.20.0
+numpy
 joblib
 plotly
 meteostat
-pytz
 xgboost
 scikit-learn
+pytz
