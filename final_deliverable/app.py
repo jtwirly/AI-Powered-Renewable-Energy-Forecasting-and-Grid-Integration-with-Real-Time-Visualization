@@ -8,6 +8,23 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 from meteostat import Point, Hourly, Daily
 import pytz
+import os
+from pathlib import Path
+
+# Constants
+MODELS_DIR = Path("models")
+DATABASE_PATH = "energy_data_NE.db"
+LOCATION = Point(42.3601, -71.0589, 70)  # Boston coordinates for NE: lat, lon, elevation
+DEFAULT_TIMEZONE = 'America/New_York'
+
+@st.cache_resource
+def load_single_model(path):
+    """Load a single model with caching"""
+    try:
+        return joblib.load(path)
+    except Exception as e:
+        st.error(f"Error loading model {path}: {str(e)}")
+        return None
 
 class EnergyDashboard:
     def __init__(self):
@@ -44,30 +61,13 @@ class EnergyDashboard:
 
         return min_date, max_date
 
-    def prepare_features(self, weather_data):
-        """Prepare features for prediction"""
-        features = weather_data[['temperature', 'dwpt', 'humidity', 'precipitation',
-                               'wdir', 'windspeed', 'pres', 'cloudcover']]
-
-        weather_data['hour'] = weather_data['datetime'].dt.hour
-        weather_data['month'] = weather_data['datetime'].dt.month
-        weather_data['season'] = np.where(weather_data['datetime'].dt.month.isin([12, 1, 2]), 1,
-                                np.where(weather_data['datetime'].dt.month.isin([3, 4, 5]), 2,
-                                np.where(weather_data['datetime'].dt.month.isin([6, 7, 8]), 3, 4)))
-        weather_data['time_of_day'] = np.where(weather_data['datetime'].dt.hour < 6, 1,
-                                      np.where(weather_data['datetime'].dt.hour < 12, 2,
-                                      np.where(weather_data['datetime'].dt.hour < 18, 3, 4)))
-
-        return pd.concat([features,
-                         weather_data[['hour', 'month', 'season', 'time_of_day']]],
-                         axis=1)
-
     def get_meteostat_data(self, start_date):
         """Get weather data from Meteostat"""
         try:
             start = pd.to_datetime(start_date)
             end = start + timedelta(days=1)
 
+            # Use self.location directly like in the working version
             data = Hourly(self.location, start, end)
             data = data.fetch()
 
@@ -91,8 +91,35 @@ class EnergyDashboard:
             st.error(f"Error fetching Meteostat data: {str(e)}")
             return None
 
+    def prepare_features(self, weather_data):
+        """Prepare features for prediction"""
+        @st.cache_data
+        def _prepare_features(data_dict):
+            data = pd.DataFrame(data_dict)
+            features = data[['temperature', 'dwpt', 'humidity', 'precipitation',
+                           'wdir', 'windspeed', 'pres', 'cloudcover']]
+
+            data['hour'] = data['datetime'].dt.hour
+            data['month'] = data['datetime'].dt.month
+            data['season'] = np.where(data['datetime'].dt.month.isin([12, 1, 2]), 1,
+                            np.where(data['datetime'].dt.month.isin([3, 4, 5]), 2,
+                            np.where(data['datetime'].dt.month.isin([6, 7, 8]), 3, 4)))
+            data['time_of_day'] = np.where(data['datetime'].dt.hour < 6, 1,
+                                  np.where(data['datetime'].dt.hour < 12, 2,
+                                  np.where(data['datetime'].dt.hour < 18, 3, 4)))
+
+            return pd.concat([features,
+                            data[['hour', 'month', 'season', 'time_of_day']]],
+                            axis=1)
+
+        return _prepare_features(weather_data.to_dict())
+
     def get_predictions(self, start_date):
         """Get predictions using Meteostat data"""
+        if not self.models:
+            st.error("Models not loaded. Please check model files and permissions.")
+            return None
+
         pred_data = self.get_meteostat_data(start_date)
 
         if pred_data is None or pred_data.empty:
@@ -101,11 +128,14 @@ class EnergyDashboard:
         pred_data['datetime'] = pd.to_datetime(pred_data['datetime'])
         X_pred = self.prepare_features(pred_data)
 
-        predictions = {'datetime': pred_data['datetime']}
-        for source, model in self.models.items():
-            predictions[source] = model.predict(X_pred)
-
-        return pd.DataFrame(predictions)
+        try:
+            predictions = {'datetime': pred_data['datetime']}
+            for source, model in self.models.items():
+                predictions[source] = model.predict(X_pred)
+            return pd.DataFrame(predictions)
+        except Exception as e:
+            st.error(f"Error making predictions: {str(e)}")
+            return None
 
     def create_plots(self, predictions, overlay=False, timezone='UTC'):
         """Create interactive plots with option to overlay and timezone selection"""
@@ -116,8 +146,7 @@ class EnergyDashboard:
         if not overlay:
             # Original separate plots
             fig = make_subplots(
-                rows=3,
-                cols=1,
+                rows=3, cols=1,
                 subplot_titles=(
                     f'Energy Generation Forecast ({timezone})',
                     'Demand Forecast',
@@ -139,8 +168,7 @@ class EnergyDashboard:
                         line=dict(color=color, width=2),
                         marker=dict(size=6)
                     ),
-                    row=1,
-                    col=1
+                    row=1, col=1
                 )
 
             # Demand prediction
@@ -151,15 +179,13 @@ class EnergyDashboard:
                     name='Demand',
                     line=dict(color='#FF4B4B', width=2)
                 ),
-                row=2,
-                col=1
+                row=2, col=1
             )
 
         else:
             # Overlaid plot
             fig = make_subplots(
-                rows=2,
-                cols=1,
+                rows=2, cols=1,
                 subplot_titles=(
                     f'Energy Generation and Demand Forecast ({timezone})',
                     'Generation Mix'
@@ -180,8 +206,7 @@ class EnergyDashboard:
                         line=dict(color=color, width=2),
                         marker=dict(size=6)
                     ),
-                    row=1,
-                    col=1
+                    row=1, col=1
                 )
 
         # Generation mix (same for both views)
@@ -193,8 +218,7 @@ class EnergyDashboard:
                 name='Solar %',
                 marker_color='#FFA62B'
             ),
-            row=3 if not overlay else 2,
-            col=1
+            row=3 if not overlay else 2, col=1
         )
         fig.add_trace(
             go.Bar(
@@ -203,8 +227,7 @@ class EnergyDashboard:
                 name='Wind %',
                 marker_color='#00B4D8'
             ),
-            row=3 if not overlay else 2,
-            col=1
+            row=3 if not overlay else 2, col=1
         )
 
         # Update layout for dark theme
