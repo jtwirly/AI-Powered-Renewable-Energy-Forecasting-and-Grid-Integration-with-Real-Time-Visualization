@@ -11,21 +11,6 @@ import pytz
 import os
 from pathlib import Path
 
-# Constants
-MODELS_DIR = Path("models")
-DATABASE_PATH = "energy_data_NE.db"
-LOCATION = Point(42.3601, -71.0589, 70)  # Boston coordinates for NE: lat, lon, elevation
-DEFAULT_TIMEZONE = 'America/New_York'
-
-@st.cache_resource
-def load_single_model(path):
-    """Load a single model with caching"""
-    try:
-        return joblib.load(path)
-    except Exception as e:
-        st.error(f"Error loading model {path}: {str(e)}")
-        return None
-
 class EnergyDashboard:
     def __init__(self):
         """Initialize dashboard with models and database connection"""
