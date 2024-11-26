@@ -1,7 +1,0 @@
-Gather additional solar data:
-    SOLAR Resource Data (from NREL)
-    NREL (National Renewable Energy Laboratory) provides access to high-quality solar resource data, including forecasted GHI, DNI, and DHI. You can access the data through the NREL Solar Resource Data platform.
-    Data Available: GHI, DNI, DHI, and other solar-related data.
-    Access: Use NREL’s Solar Resource Data API or download from their Solar Data Viewer.
-    Link: NREL Solar Data
-
