@@ -1,9 +1,8 @@
 streamlit
 pandas
 numpy
-joblib
 plotly
 meteostat
-xgboost
 scikit-learn
+xgboost
 pytz

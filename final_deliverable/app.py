@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import joblib
+import pickle
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
@@ -13,9 +13,9 @@ def load_models():
     """Load all models"""
     try:
         models = {
-            'solar': joblib.load('solar_model.joblib'),
-            'wind': joblib.load('wind_model.joblib'),
-            'demand': joblib.load('demand_model.joblib')
+            'solar': pickle.load(open('solar_model.pkl', 'rb')),
+            'wind': pickle.load(open('wind_model.pkl', 'rb')),
+            'demand': pickle.load(open('demand_model.pkl', 'rb'))
         }
         st.success("✅ Models loaded successfully")
         return models
